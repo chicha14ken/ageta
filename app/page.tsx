@@ -1,8 +1,9 @@
- "use client";
+"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import { createLocalWorkoutRepository } from "@/data/localRepository";
 import type { Exercise } from "@/domain/models";
+import { estimateOneRepMax } from "@/domain/pr";
 import { getExerciseNameJa } from "@/lib/exerciseNames";
 import { WeightInput, type WeightChip } from "@/components/WeightInput";
 import {
@@ -94,9 +95,15 @@ export default function TodayPage() {
   const [bodyweightKg, setBodyweightKg] = useState<number | undefined>(
     undefined,
   );
+  /** 種目ごとの最高重量（ベストチップ表示用） */
   const [bestWeights, setBestWeights] = useState<Record<string, number>>({});
-  const [stepOverrides, setStepOverrides] = useState<Record<string, StepOption>>({});
-  const [prCelebration, setPrCelebration] = useState<PrCelebrationData | null>(null);
+  /** 種目ごとの推定1RM自己ベスト（PR判定用） */
+  const [bestOneRms, setBestOneRms] = useState<Record<string, number>>({});
+  const [stepOverrides, setStepOverrides] = useState<
+    Record<string, StepOption>
+  >({});
+  const [prCelebration, setPrCelebration] =
+    useState<PrCelebrationData | null>(null);
 
   useEffect(() => {
     repo
@@ -144,6 +151,7 @@ export default function TodayPage() {
       .catch(() => {});
   }, [repo]);
 
+  // ⑤ 前回値の取得 → 自動入力
   useEffect(() => {
     if (!selectedExerciseId) return;
     repo
@@ -158,25 +166,33 @@ export default function TodayPage() {
           weightKg: set.weightKg,
           reps: set.reps,
         });
+        // 種目切り替え時に前回値を自動入力
+        setCurrentWeight(set.weightKg);
+        setCurrentReps(set.reps);
       })
-      .catch(() => {
-        // ignore suggestion errors
-      });
+      .catch(() => {});
   }, [repo, selectedExerciseId]);
 
+  // 過去の全セットからベスト重量・1RMを計算
   useEffect(() => {
     repo
       .listWorkoutsWithSets()
       .then((workoutsWithSets) => {
-        const maxByExercise: Record<string, number> = {};
-        for (const { sets } of workoutsWithSets) {
-          for (const set of sets) {
-            if (set.weightKg > (maxByExercise[set.exerciseId] ?? 0)) {
-              maxByExercise[set.exerciseId] = set.weightKg;
+        const maxWeightByExercise: Record<string, number> = {};
+        const maxOneRmByExercise: Record<string, number> = {};
+        for (const { sets: wSets } of workoutsWithSets) {
+          for (const set of wSets) {
+            if (set.weightKg > (maxWeightByExercise[set.exerciseId] ?? 0)) {
+              maxWeightByExercise[set.exerciseId] = set.weightKg;
+            }
+            const oneRm = estimateOneRepMax(set.weightKg, set.reps);
+            if (oneRm > (maxOneRmByExercise[set.exerciseId] ?? 0)) {
+              maxOneRmByExercise[set.exerciseId] = oneRm;
             }
           }
         }
-        setBestWeights(maxByExercise);
+        setBestWeights(maxWeightByExercise);
+        setBestOneRms(maxOneRmByExercise);
       })
       .catch(() => {});
   }, [repo]);
@@ -223,11 +239,13 @@ export default function TodayPage() {
     setError(null);
     setInfo(null);
 
-    // PR判定：保存前に現在のベストを確認
-    const previousBest = bestWeights[selectedExerciseId]; // undefined = 初記録
-    const isNewPr = previousBest === undefined
-      ? true
-      : currentWeight > previousBest;
+    // ③ 推定1RM基準でPR判定（保存前に現在のベストを確認）
+    const currentOneRm = estimateOneRepMax(currentWeight, currentReps);
+    const previousBestOneRm = bestOneRms[selectedExerciseId]; // undefined = 初記録
+    const isNewPr =
+      previousBestOneRm === undefined
+        ? true
+        : currentOneRm > previousBestOneRm;
 
     try {
       let workoutId = todayWorkoutId;
@@ -256,6 +274,12 @@ export default function TodayPage() {
           ? { ...prev, [selectedExerciseId]: currentWeight }
           : prev;
       });
+      setBestOneRms((prev) => {
+        const currentBest = prev[selectedExerciseId] ?? 0;
+        return currentOneRm > currentBest
+          ? { ...prev, [selectedExerciseId]: currentOneRm }
+          : prev;
+      });
 
       if (isNewPr) {
         // 🏆 PR達成 → お祝い演出
@@ -265,8 +289,11 @@ export default function TodayPage() {
           : selectedExerciseId;
         setPrCelebration({
           exerciseName,
-          newWeightKg: currentWeight,
-          previousWeightKg: previousBest !== undefined ? previousBest : null,
+          weightKg: currentWeight,
+          reps: currentReps,
+          newOneRmKg: currentOneRm,
+          previousOneRmKg:
+            previousBestOneRm !== undefined ? previousBestOneRm : null,
         });
       } else {
         setInfo("セットを記録しました。");
@@ -334,6 +361,17 @@ export default function TodayPage() {
     setInfo("ワークアウトを保存しました。履歴で確認できます。");
   };
 
+  // ② 種目ごとにセットをグルーピング（出現順を保持）
+  const groupedSets = useMemo(() => {
+    const groupMap = new Map<string, DraftSet[]>();
+    for (const set of sets) {
+      const group = groupMap.get(set.exerciseId) ?? [];
+      group.push(set);
+      groupMap.set(set.exerciseId, group);
+    }
+    return Array.from(groupMap.entries());
+  }, [sets]);
+
   return (
     <div className="space-y-4">
       {/* PR達成時のお祝いオーバーレイ */}
@@ -343,6 +381,7 @@ export default function TodayPage() {
           onDismiss={() => setPrCelebration(null)}
         />
       )}
+
       <section className="space-y-2 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-zinc-100 dark:bg-zinc-900 dark:ring-zinc-800">
         <div className="flex items-center justify-between gap-2">
           <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
@@ -393,6 +432,10 @@ export default function TodayPage() {
                 <div className="grid grid-cols-2 gap-2">
                   {filteredExercises.map((exercise) => {
                     const isSelected = exercise.id === selectedExerciseId;
+                    // ④ 今日のセット数バッジ用カウント
+                    const todaySetsCount = sets.filter(
+                      (s) => s.exerciseId === exercise.id,
+                    ).length;
                     return (
                       <button
                         key={exercise.id}
@@ -404,12 +447,23 @@ export default function TodayPage() {
                             : "border-zinc-200 bg-white text-zinc-700 hover:border-zinc-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:border-zinc-500"
                         }`}
                       >
-                        <span className="truncate">{exercise.name}</span>
-                        {isSelected && (
-                          <span className="ml-2 text-[0.65rem] font-semibold">
-                            選択中
-                          </span>
-                        )}
+                        {/* ① 日本語名で表示 */}
+                        <span className="truncate">
+                          {getExerciseNameJa(exercise.id, exercise.name)}
+                        </span>
+                        <div className="ml-1 flex shrink-0 items-center gap-1">
+                          {/* ④ セット数バッジ */}
+                          {todaySetsCount > 0 && (
+                            <span className="flex h-4 w-4 items-center justify-center rounded-full bg-emerald-500 text-[0.6rem] font-bold text-white">
+                              {todaySetsCount}
+                            </span>
+                          )}
+                          {isSelected && (
+                            <span className="text-[0.65rem] font-semibold">
+                              選択中
+                            </span>
+                          )}
+                        </div>
                       </button>
                     );
                   })}
@@ -491,6 +545,7 @@ export default function TodayPage() {
         </div>
       </section>
 
+      {/* ② グルーピングされたセット一覧 */}
       <section className="space-y-2 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-zinc-100 dark:bg-zinc-900 dark:ring-zinc-800">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
@@ -499,118 +554,152 @@ export default function TodayPage() {
           <span className="text-xs text-zinc-500">{sets.length} セット</span>
         </div>
 
-        {sets.length === 0 ? (
+        {groupedSets.length === 0 ? (
           <p className="text-xs text-zinc-500">
             まだ記録がありません。上の「セットを追加」から記録を始めましょう。
           </p>
         ) : (
-          <ul className="space-y-1.5 text-xs">
-            {sets.map((set, index) => {
-              const ex = exercises.find((e) => e.id === set.exerciseId);
-              const isEditing = set.id === editingSetId;
+          <div className="space-y-4">
+            {groupedSets.map(([exerciseId, groupSets]) => {
+              const ex = exercises.find((e) => e.id === exerciseId);
+              const exName = ex
+                ? getExerciseNameJa(ex.id, ex.name)
+                : "（不明）";
+              const totalVolume = groupSets.reduce(
+                (sum, s) => sum + s.weightKg * s.reps,
+                0,
+              );
               return (
-                <li
-                  key={set.id}
-                  className="flex items-center justify-between rounded-lg bg-zinc-50 px-2.5 py-1.5 dark:bg-zinc-800/80"
-                >
-                  <div className="flex flex-1 flex-col gap-1">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[0.7rem] font-medium text-zinc-600 dark:text-zinc-300">
-                        {ex ? getExerciseNameJa(ex.id, ex.name) : "（不明）"}
-                      </span>
-                      <span className="text-[0.7rem] text-zinc-500">
-                        #{index + 1}
-                      </span>
-                    </div>
-                    {isEditing ? (
-                      <div className="flex items-center gap-2">
-                        <div className="flex items-center gap-1">
-                          <span className="text-[0.7rem] text-zinc-500">
-                            重量
-                          </span>
-                          <input
-                            type="number"
-                            inputMode="decimal"
-                            className="h-7 w-20 rounded-lg border border-zinc-200 bg-white px-2 text-[0.75rem] outline-none focus:border-zinc-500 dark:border-zinc-700 dark:bg-zinc-900"
-                            value={
-                              Number.isNaN(editingWeight) ? "" : editingWeight
-                            }
-                            onChange={(e) =>
-                              setEditingWeight(
-                                e.target.value === ""
-                                  ? 0
-                                  : Number(e.target.value),
-                              )
-                            }
-                          />
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <span className="text-[0.7rem] text-zinc-500">
-                            回数
-                          </span>
-                          <input
-                            type="number"
-                            inputMode="numeric"
-                            className="h-7 w-16 rounded-lg border border-zinc-200 bg-white px-2 text-[0.75rem] outline-none focus:border-zinc-500 dark:border-zinc-700 dark:bg-zinc-900"
-                            value={Number.isNaN(editingReps) ? "" : editingReps}
-                            onChange={(e) =>
-                              setEditingReps(
-                                e.target.value === ""
-                                  ? 0
-                                  : Number(e.target.value),
-                              )
-                            }
-                          />
-                        </div>
-                      </div>
-                    ) : (
-                      <span className="font-semibold text-zinc-900 dark:text-zinc-50">
-                        {set.weightKg}kg × {set.reps}回
-                      </span>
-                    )}
+                <div key={exerciseId}>
+                  {/* グループヘッダー */}
+                  <div className="mb-1.5 flex items-center justify-between">
+                    <span className="text-xs font-semibold text-zinc-800 dark:text-zinc-100">
+                      {exName}
+                    </span>
+                    <span className="text-[0.7rem] text-zinc-400">
+                      {groupSets.length}セット・
+                      {totalVolume.toLocaleString()}kg
+                    </span>
                   </div>
-                  <div className="ml-2 flex flex-col items-end gap-1">
-                    {isEditing ? (
-                      <>
-                        <button
-                          type="button"
-                          onClick={handleSaveEditSet}
-                          className="h-6 rounded-full bg-emerald-600 px-2 text-[0.7rem] font-semibold text-white shadow-sm active:scale-[0.97] dark:bg-emerald-500"
+                  {/* セット行 */}
+                  <ul className="space-y-1 text-xs">
+                    {groupSets.map((set, idx) => {
+                      const isEditing = set.id === editingSetId;
+                      return (
+                        <li
+                          key={set.id}
+                          className="flex items-center gap-2 rounded-lg bg-zinc-50 px-2.5 py-1.5 dark:bg-zinc-800/80"
                         >
-                          保存
-                        </button>
-                        <button
-                          type="button"
-                          onClick={handleCancelEditSet}
-                          className="h-6 rounded-full px-2 text-[0.7rem] text-zinc-500 hover:bg-zinc-200/70 dark:text-zinc-300 dark:hover:bg-zinc-700/80"
-                        >
-                          キャンセル
-                        </button>
-                      </>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => handleStartEditSet(set)}
-                        className="h-6 rounded-full px-2 text-[0.7rem] text-zinc-500 hover:bg-zinc-200/70 dark:text-zinc-300 dark:hover:bg-zinc-700/80"
-                      >
-                        編集
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteSet(set.id)}
-                      className="h-6 rounded-full px-2 text-[0.7rem] text-red-500 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/40"
-                    >
-                      削除
-                    </button>
-                  </div>
-                </li>
+                          {/* セット番号 */}
+                          <span className="w-5 shrink-0 text-center text-[0.65rem] font-bold text-zinc-400 dark:text-zinc-500">
+                            {idx + 1}
+                          </span>
+
+                          {/* 内容 */}
+                          <div className="flex flex-1 items-center">
+                            {isEditing ? (
+                              <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-1">
+                                  <span className="text-[0.7rem] text-zinc-500">
+                                    重量
+                                  </span>
+                                  <input
+                                    type="number"
+                                    inputMode="decimal"
+                                    className="h-7 w-20 rounded-lg border border-zinc-200 bg-white px-2 text-[0.75rem] outline-none focus:border-zinc-500 dark:border-zinc-700 dark:bg-zinc-900"
+                                    value={
+                                      Number.isNaN(editingWeight)
+                                        ? ""
+                                        : editingWeight
+                                    }
+                                    onChange={(e) =>
+                                      setEditingWeight(
+                                        e.target.value === ""
+                                          ? 0
+                                          : Number(e.target.value),
+                                      )
+                                    }
+                                  />
+                                </div>
+                                <div className="flex items-center gap-1">
+                                  <span className="text-[0.7rem] text-zinc-500">
+                                    回数
+                                  </span>
+                                  <input
+                                    type="number"
+                                    inputMode="numeric"
+                                    className="h-7 w-16 rounded-lg border border-zinc-200 bg-white px-2 text-[0.75rem] outline-none focus:border-zinc-500 dark:border-zinc-700 dark:bg-zinc-900"
+                                    value={
+                                      Number.isNaN(editingReps)
+                                        ? ""
+                                        : editingReps
+                                    }
+                                    onChange={(e) =>
+                                      setEditingReps(
+                                        e.target.value === ""
+                                          ? 0
+                                          : Number(e.target.value),
+                                      )
+                                    }
+                                  />
+                                </div>
+                              </div>
+                            ) : (
+                              <span className="font-semibold text-zinc-900 dark:text-zinc-50">
+                                {set.weightKg}kg × {set.reps}回
+                              </span>
+                            )}
+                          </div>
+
+                          {/* アクションボタン */}
+                          <div className="flex shrink-0 items-center gap-0.5">
+                            {isEditing ? (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={handleSaveEditSet}
+                                  className="h-6 rounded-full bg-emerald-600 px-2 text-[0.7rem] font-semibold text-white shadow-sm active:scale-[0.97] dark:bg-emerald-500"
+                                >
+                                  保存
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={handleCancelEditSet}
+                                  className="h-6 rounded-full px-2 text-[0.7rem] text-zinc-500 hover:bg-zinc-200/70 dark:text-zinc-300 dark:hover:bg-zinc-700/80"
+                                >
+                                  取消
+                                </button>
+                              </>
+                            ) : (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => handleStartEditSet(set)}
+                                  className="h-6 rounded-full px-2 text-[0.7rem] text-zinc-500 hover:bg-zinc-200/70 dark:text-zinc-300 dark:hover:bg-zinc-700/80"
+                                >
+                                  編集
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteSet(set.id)}
+                                  className="h-6 rounded-full px-2 text-[0.7rem] text-red-500 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/40"
+                                >
+                                  削除
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
               );
             })}
-          </ul>
+          </div>
         )}
 
-        <div className="space-y-1.5">
+        <div className="space-y-1.5 pt-1">
           <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-300">
             体重 (kg)
           </label>
@@ -621,9 +710,7 @@ export default function TodayPage() {
             placeholder="任意"
             className="h-8 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm outline-none focus:border-zinc-500 dark:border-zinc-700 dark:bg-zinc-900 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
             value={
-              bodyweightKg == null || bodyweightKg === 0
-                ? ""
-                : bodyweightKg
+              bodyweightKg == null || bodyweightKg === 0 ? "" : bodyweightKg
             }
             onChange={(e) => {
               const v = e.target.value;
@@ -638,7 +725,7 @@ export default function TodayPage() {
           disabled={sets.length === 0 && !todayWorkoutId}
           className="mt-2 h-10 w-full rounded-full bg-emerald-600 text-sm font-semibold text-white shadow-sm transition active:scale-[0.98] disabled:opacity-40 dark:bg-emerald-500"
         >
-          ワークアウトを保存
+          ワークアウトを完了する
         </button>
 
         {error && (
@@ -655,4 +742,3 @@ export default function TodayPage() {
     </div>
   );
 }
-

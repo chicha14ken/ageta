@@ -4,9 +4,14 @@ import { useEffect } from "react";
 
 export type PrCelebrationData = {
   exerciseName: string;
-  newWeightKg: number;
-  /** null = このエクササイズの初記録 */
-  previousWeightKg: number | null;
+  /** 実際に挙げた重量 */
+  weightKg: number;
+  /** 実際の回数 */
+  reps: number;
+  /** 新しい推定1RM */
+  newOneRmKg: number;
+  /** 前回の推定1RM（null = このエクササイズの初記録） */
+  previousOneRmKg: number | null;
 };
 
 type Props = PrCelebrationData & {
@@ -50,18 +55,24 @@ const PARTICLES = generateParticles();
 
 export function PrCelebration({
   exerciseName,
-  newWeightKg,
-  previousWeightKg,
+  weightKg,
+  reps,
+  newOneRmKg,
+  previousOneRmKg,
   onDismiss,
 }: Props) {
-  const isFirstRecord = previousWeightKg === null;
-  const improvement =
-    previousWeightKg !== null ? newWeightKg - previousWeightKg : null;
+  const isFirstRecord = previousOneRmKg === null;
+  const oneRmImprovement =
+    previousOneRmKg !== null
+      ? Math.round((newOneRmKg - previousOneRmKg) * 10) / 10
+      : null;
 
   const shareText = isFirstRecord
-    ? `${exerciseName} を初記録！💪\n${newWeightKg}kg\n筋トレログアプリで記録中 #筋トレ #筋トレログ`
-    : `${exerciseName} で自己ベスト更新！🏆\n${newWeightKg}kg${
-        improvement !== null && improvement > 0 ? `（+${improvement}kg UP）` : ""
+    ? `${exerciseName} を初記録！💪\n${weightKg}kg × ${reps}回（推定1RM: ${newOneRmKg}kg）\n筋トレログアプリで記録中 #筋トレ #筋トレログ`
+    : `${exerciseName} で推定1RM更新！🏆\n${weightKg}kg × ${reps}回 → 推定1RM: ${newOneRmKg}kg${
+        oneRmImprovement !== null && oneRmImprovement > 0
+          ? `（+${oneRmImprovement}kg UP）`
+          : ""
       }\n#筋トレ #PR更新 #筋トレログ`;
 
   const handleShare = () => {
@@ -142,23 +153,31 @@ export function PrCelebration({
 
           {/* タイトル */}
           <p className="mb-1 text-[1.6rem] font-black tracking-tight text-zinc-900 dark:text-zinc-50">
-            {isFirstRecord ? "初記録！" : "新記録更新！"}
+            {isFirstRecord ? "初記録！" : "1RM更新！"}
           </p>
 
           {/* 種目名 */}
-          <p className="mb-4 text-sm text-zinc-500">{exerciseName}</p>
+          <p className="mb-3 text-sm text-zinc-500">{exerciseName}</p>
 
-          {/* 重量 */}
+          {/* 実際のセット */}
+          <p className="mb-1 text-sm font-semibold text-zinc-600 dark:text-zinc-300">
+            {weightKg}kg × {reps}回
+          </p>
+
+          {/* 推定1RM（メイン数値） */}
+          <p className="mb-1 text-[0.7rem] font-medium text-zinc-400 dark:text-zinc-500">
+            推定1RM
+          </p>
           <p className="mb-1 text-5xl font-black tabular-nums leading-none text-emerald-500">
-            {newWeightKg}
+            {newOneRmKg}
             <span className="text-2xl font-bold">kg</span>
           </p>
 
           {/* 改善量 or 初記録バッジ */}
           <div className="mb-6 h-5">
-            {improvement !== null && improvement > 0 ? (
+            {oneRmImprovement !== null && oneRmImprovement > 0 ? (
               <p className="text-sm font-bold text-emerald-600 dark:text-emerald-400">
-                ＋{improvement}kg アップ 🔥
+                ＋{oneRmImprovement}kg アップ 🔥
               </p>
             ) : isFirstRecord ? (
               <p className="text-sm font-bold text-amber-500">
