@@ -92,9 +92,6 @@ export default function TodayPage() {
   const [editingSetId, setEditingSetId] = useState<string | null>(null);
   const [editingWeight, setEditingWeight] = useState<number>(0);
   const [editingReps, setEditingReps] = useState<number>(0);
-  const [bodyweightKg, setBodyweightKg] = useState<number | undefined>(
-    undefined,
-  );
   /** 種目ごとの最高重量（ベストチップ表示用） */
   const [bestWeights, setBestWeights] = useState<Record<string, number>>({});
   /** 種目ごとの推定1RM自己ベスト（PR判定用） */
@@ -341,23 +338,8 @@ export default function TodayPage() {
       setInfo("セットを追加してください。");
       return;
     }
-    if (todayWorkoutId && bodyweightKg != null && bodyweightKg > 0) {
-      try {
-        const workout = await repo.getWorkout(todayWorkoutId);
-        if (workout) {
-          await repo.updateWorkout({
-            ...workout,
-            bodyweightKg,
-          });
-        }
-      } catch {
-        setError("体重の保存に失敗しました。");
-        return;
-      }
-    }
     setTodayWorkoutId(null);
     setSets([]);
-    setBodyweightKg(undefined);
     setInfo("ワークアウトを保存しました。履歴で確認できます。");
   };
 
@@ -698,26 +680,6 @@ export default function TodayPage() {
             })}
           </div>
         )}
-
-        <div className="space-y-1.5 pt-1">
-          <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-300">
-            体重 (kg)
-          </label>
-          <input
-            type="number"
-            inputMode="decimal"
-            step="0.1"
-            placeholder="任意"
-            className="h-8 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm outline-none focus:border-zinc-500 dark:border-zinc-700 dark:bg-zinc-900 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-            value={
-              bodyweightKg == null || bodyweightKg === 0 ? "" : bodyweightKg
-            }
-            onChange={(e) => {
-              const v = e.target.value;
-              setBodyweightKg(v === "" ? undefined : Number(v));
-            }}
-          />
-        </div>
 
         <button
           type="button"
