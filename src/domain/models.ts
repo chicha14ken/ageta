@@ -2,6 +2,12 @@ export type Exercise = {
   id: string;
   name: string;
   bodyPart: string;
+  /**
+   * "weighted" (default) — weight + reps
+   * "bodyweight" — no external weight, reps only
+   * "timed" — duration in seconds (stored in the reps field)
+   */
+  type?: "weighted" | "bodyweight" | "timed";
 };
 
 export type Workout = {

@@ -23,21 +23,29 @@ export function computeExercisePrs(
     { maxWeightKg: number; bestReps: number; bestOneRm: number }
   >();
 
+  const exerciseTypeMap = new Map(exercises.map((e) => [e.id, e.type ?? "weighted"]));
+
   for (const set of sets) {
-    if (set.weightKg <= 0 || set.reps <= 0) continue;
-    const current = byExercise.get(set.exerciseId) ?? {
-      maxWeightKg: 0,
-      bestReps: 0,
-      bestOneRm: 0,
-    };
+    if (set.reps <= 0) continue;
+    const type = exerciseTypeMap.get(set.exerciseId) ?? "weighted";
 
-    const oneRm = estimateOneRepMax(set.weightKg, set.reps);
-
-    const maxWeightKg = Math.max(current.maxWeightKg, set.weightKg);
-    const bestReps = Math.max(current.bestReps, set.reps);
-    const bestOneRm = Math.max(current.bestOneRm, oneRm);
-
-    byExercise.set(set.exerciseId, { maxWeightKg, bestReps, bestOneRm });
+    if (type === "bodyweight" || type === "timed") {
+      // Track best reps (bodyweight) or best duration in seconds (timed).
+      const current = byExercise.get(set.exerciseId) ?? { maxWeightKg: 0, bestReps: 0, bestOneRm: 0 };
+      byExercise.set(set.exerciseId, {
+        ...current,
+        bestReps: Math.max(current.bestReps, set.reps),
+      });
+    } else {
+      if (set.weightKg <= 0) continue;
+      const current = byExercise.get(set.exerciseId) ?? { maxWeightKg: 0, bestReps: 0, bestOneRm: 0 };
+      const oneRm = estimateOneRepMax(set.weightKg, set.reps);
+      byExercise.set(set.exerciseId, {
+        maxWeightKg: Math.max(current.maxWeightKg, set.weightKg),
+        bestReps: Math.max(current.bestReps, set.reps),
+        bestOneRm: Math.max(current.bestOneRm, oneRm),
+      });
+    }
   }
 
   const result: ExercisePr[] = [];
@@ -54,8 +62,11 @@ export function computeExercisePrs(
     });
   }
 
-  // Sort by estimated 1RM descending.
-  result.sort((a, b) => b.estimatedOneRmKg - a.estimatedOneRmKg);
+  // Weighted exercises sort by 1RM; bodyweight/timed sort by bestReps.
+  result.sort((a, b) => {
+    if (b.estimatedOneRmKg !== a.estimatedOneRmKg) return b.estimatedOneRmKg - a.estimatedOneRmKg;
+    return b.bestReps - a.bestReps;
+  });
 
   return result;
 }

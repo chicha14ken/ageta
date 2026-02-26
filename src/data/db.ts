@@ -1,7 +1,7 @@
 import type { Exercise, Workout, SetEntry } from "../domain/models";
 
 export const DB_NAME = "gymlog-db";
-export const DB_VERSION = 3;
+export const DB_VERSION = 4;
 
 const STORE_EXERCISES = "exercises";
 const STORE_WORKOUTS = "workouts";
@@ -92,6 +92,73 @@ const EXERCISES_V3: Exercise[] = [
   { id: "russian-twist",        name: "Russian Twist",        bodyPart: "core" },
 ];
 
+/** v4: same 56 exercises, with type annotations for bodyweight / timed. */
+const EXERCISES_V4: Exercise[] = [
+  // ── 胸 ──────────────────────────────────────────────────
+  { id: "bench-press",          name: "Bench Press",            bodyPart: "chest" },
+  { id: "incline-bench",        name: "Incline Bench Press",    bodyPart: "chest" },
+  { id: "decline-bench",        name: "Decline Bench Press",    bodyPart: "chest" },
+  { id: "dumbbell-fly",         name: "Dumbbell Fly",           bodyPart: "chest" },
+  { id: "cable-crossover",      name: "Cable Crossover",        bodyPart: "chest" },
+  { id: "chest-press-machine",  name: "Chest Press Machine",    bodyPart: "chest" },
+  { id: "pec-deck",             name: "Pec Deck",               bodyPart: "chest" },
+  { id: "push-up",              name: "Push-Up",                bodyPart: "chest",    type: "bodyweight" },
+  // ── 背中 ────────────────────────────────────────────────
+  { id: "deadlift",             name: "Deadlift",               bodyPart: "back" },
+  { id: "barbell-row",          name: "Barbell Row",            bodyPart: "back" },
+  { id: "cable-row",            name: "Cable Row",              bodyPart: "back" },
+  { id: "t-bar-row",            name: "T-Bar Row",              bodyPart: "back" },
+  { id: "pull-up",              name: "Pull-Up",                bodyPart: "back",     type: "bodyweight" },
+  { id: "chin-up",              name: "Chin-Up",                bodyPart: "back",     type: "bodyweight" },
+  { id: "lat-pulldown",         name: "Lat Pulldown",           bodyPart: "back" },
+  { id: "face-pull",            name: "Face Pull",              bodyPart: "back" },
+  // ── 脚 ──────────────────────────────────────────────────
+  { id: "back-squat",           name: "Back Squat",             bodyPart: "legs" },
+  { id: "front-squat",          name: "Front Squat",            bodyPart: "legs" },
+  { id: "bulgarian-split-squat",name: "Bulgarian Split Squat",  bodyPart: "legs" },
+  { id: "hack-squat",           name: "Hack Squat",             bodyPart: "legs" },
+  { id: "sumo-squat",           name: "Sumo Squat",             bodyPart: "legs" },
+  { id: "leg-press",            name: "Leg Press",              bodyPart: "legs" },
+  { id: "romanian-deadlift",    name: "Romanian Deadlift",      bodyPart: "legs" },
+  { id: "walking-lunge",        name: "Walking Lunge",          bodyPart: "legs" },
+  { id: "leg-curl",             name: "Leg Curl",               bodyPart: "legs" },
+  { id: "leg-extension",        name: "Leg Extension",          bodyPart: "legs" },
+  { id: "calf-raise",           name: "Calf Raise",             bodyPart: "legs" },
+  { id: "hip-thrust",           name: "Hip Thrust",             bodyPart: "legs" },
+  { id: "nordic-curl",          name: "Nordic Curl",            bodyPart: "legs",     type: "bodyweight" },
+  // ── 肩 ──────────────────────────────────────────────────
+  { id: "overhead-press",       name: "Overhead Press",         bodyPart: "shoulders" },
+  { id: "push-press",           name: "Push Press",             bodyPart: "shoulders" },
+  { id: "db-shoulder-press",    name: "DB Shoulder Press",      bodyPart: "shoulders" },
+  { id: "lateral-raise",        name: "Lateral Raise",          bodyPart: "shoulders" },
+  { id: "front-raise",          name: "Front Raise",            bodyPart: "shoulders" },
+  { id: "rear-delt-fly",        name: "Rear Delt Fly",          bodyPart: "shoulders" },
+  { id: "cable-lateral-raise",  name: "Cable Lateral Raise",    bodyPart: "shoulders" },
+  // ── 上腕二頭筋 ──────────────────────────────────────────
+  { id: "barbell-curl",         name: "Barbell Curl",           bodyPart: "biceps" },
+  { id: "dumbbell-curl",        name: "Dumbbell Curl",          bodyPart: "biceps" },
+  { id: "hammer-curl",          name: "Hammer Curl",            bodyPart: "biceps" },
+  { id: "concentration-curl",   name: "Concentration Curl",     bodyPart: "biceps" },
+  { id: "cable-curl",           name: "Cable Curl",             bodyPart: "biceps" },
+  { id: "preacher-curl",        name: "Preacher Curl",          bodyPart: "biceps" },
+  // ── 上腕三頭筋 ──────────────────────────────────────────
+  { id: "tricep-extension",     name: "Tricep Extension",       bodyPart: "triceps" },
+  { id: "dip",                  name: "Dip",                    bodyPart: "triceps",  type: "bodyweight" },
+  { id: "skull-crusher",        name: "Skull Crusher",          bodyPart: "triceps" },
+  { id: "tricep-pushdown",      name: "Tricep Pushdown",        bodyPart: "triceps" },
+  { id: "overhead-tricep-ext",  name: "Overhead Tricep Ext",    bodyPart: "triceps" },
+  { id: "close-grip-bench",     name: "Close-Grip Bench Press", bodyPart: "triceps" },
+  // ── 体幹 ────────────────────────────────────────────────
+  { id: "ab-wheel",             name: "Ab Wheel",               bodyPart: "core",     type: "bodyweight" },
+  { id: "plank",                name: "Plank",                  bodyPart: "core",     type: "timed" },
+  { id: "leg-raise",            name: "Leg Raise",              bodyPart: "core",     type: "bodyweight" },
+  { id: "hanging-leg-raise",    name: "Hanging Leg Raise",      bodyPart: "core",     type: "bodyweight" },
+  { id: "cable-crunch",         name: "Cable Crunch",           bodyPart: "core" },
+  { id: "crunches",             name: "Crunches",               bodyPart: "core",     type: "bodyweight" },
+  { id: "dead-bug",             name: "Dead Bug",               bodyPart: "core",     type: "bodyweight" },
+  { id: "russian-twist",        name: "Russian Twist",          bodyPart: "core",     type: "bodyweight" },
+];
+
 export async function openDb(): Promise<IDBDatabase> {
   const indexedDB = getIndexedDb();
 
@@ -177,6 +244,14 @@ export async function openDb(): Promise<IDBDatabase> {
       if (oldVersion < 3) {
         exerciseStore.clear();
         for (const exercise of EXERCISES_V3) {
+          exerciseStore.add(exercise);
+        }
+      }
+
+      // v4: same exercises with type annotations for bodyweight / timed.
+      if (oldVersion < 4) {
+        exerciseStore.clear();
+        for (const exercise of EXERCISES_V4) {
           exerciseStore.add(exercise);
         }
       }
